@@ -22,4 +22,4 @@ When developing an application with the Arduino Yun it is possible to distribute
 ![Typical application using an Arduino Yun][Fig-Yun-App]
 
 
-[Fig-Yun-App]: https://raw.githubusercontent.com/SINTEF-9012/Yun-ThingML/master/doc/Fig-Yun-App.png
+[Fig-Yun-App]: https://raw.githubusercontent.com/SINTEF-9012/Yun-ThingML/master/doc/Fig-Yun-App.png?token=756491__eyJzY29wZSI6IlJhd0Jsb2I6U0lOVEVGLTkwMTIvWXVuLVRoaW5nTUwvbWFzdGVyL2RvYy9GaWctWXVuLUFwcC5wbmciLCJleHBpcmVzIjoxNDAxMjczMzA1fQ%3D%3D--26c5877d0dd773c9d58a40b68a7b0c6e801bfd50
