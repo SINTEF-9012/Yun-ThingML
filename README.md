@@ -22,7 +22,8 @@ A typical applications based on the Arduino Yun involves some sort of sensors an
 The figure bellow presents a typical setup:
 ![Typical application using an Arduino Yun][Fig-Yun-App]
 
-When developing an application with the Arduino Yun it is possible to distribute the application logic between the 
+The ATmega32u4 of the Arduino allows connecting a variety of sensors and actuators in order for the application to interract with the physical world. In that respect the Arduino Yun is similar to the "regular" Arduino borads like the Uno or Leonardo. The addition of the AR9331 processor makes it interesting when building applications which are "connected". The AR9331 acts as a gateway between the microcontroller and an IP network (Either using Ethernet or Wifi).
+
 
 [Fig-Yun-App]: https://raw.githubusercontent.com/SINTEF-9012/Yun-ThingML/master/doc/Fig-Yun-App-600.png?token=756491__eyJzY29wZSI6IlJhd0Jsb2I6U0lOVEVGLTkwMTIvWXVuLVRoaW5nTUwvbWFzdGVyL2RvYy9GaWctWXVuLUFwcC02MDAucG5nIiwiZXhwaXJlcyI6MTQwMTI3Mzg2M30%3D--fcd1abca987eb52e17c15c80d097b48950a3b543
 
