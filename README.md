@@ -1,6 +1,6 @@
 # Using ThingML on the Arduino Yun
 
-This repository contains a set of ThingML libraries and examples to program applications using the Arduino Yun.
+This repository contains a set of [ThingML][Link-ThingML] libraries and examples to program applications using the [Arduino Yun][Link-Yun].
 
 ## The Arduino Yun
 
@@ -25,3 +25,7 @@ The figure bellow presents a typical setup:
 When developing an application with the Arduino Yun it is possible to distribute the application logic between the 
 
 [Fig-Yun-App]: https://raw.githubusercontent.com/SINTEF-9012/Yun-ThingML/master/doc/Fig-Yun-App-600.png?token=756491__eyJzY29wZSI6IlJhd0Jsb2I6U0lOVEVGLTkwMTIvWXVuLVRoaW5nTUwvbWFzdGVyL2RvYy9GaWctWXVuLUFwcC02MDAucG5nIiwiZXhwaXJlcyI6MTQwMTI3Mzg2M30%3D--fcd1abca987eb52e17c15c80d097b48950a3b543
+
+[Link-Yun]: http://arduino.cc/en/Main/ArduinoBoardYun?from=Main.ArduinoYUN
+
+[Link-ThingML]: http://www.thingml.org 
