@@ -18,3 +18,8 @@ In terms of connectivity, the arduino Yun can be connected to via USB, ethernet 
 A typical applications based on the Arduino Yun involves  
 
 When developing an application with the Arduino Yun it is possible to distribute the application logic between the 
+
+![Typical application using an Arduino Yun][Fig-Yun-App]
+
+
+[Fig-Yun-App]: https://raw.githubusercontent.com/SINTEF-9012/Yun-ThingML/master/doc/Fig-Yun-App.png
