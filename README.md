@@ -25,13 +25,9 @@ The figure bellow presents a typical setup:
 The ATmega32u4 of the Arduino allows connecting a variety of sensors and actuators in order for the application to interract with the physical world. In that respect the Arduino Yun is similar to the "regular" Arduino borads like the Uno or Leonardo. The addition of the AR9331 processor makes it interesting when building applications which are "connected". The AR9331 acts as a gateway between the microcontroller and an IP network (Either using Ethernet or Wifi). The Bridge library on the Arduino Yun allows for communication between the two processors.
 
 A shown on the figure, the strength of such a setup is that the code of the final application can be distributed to 4 different locations:
-* The ATmega32u4 microcontoller
+* *The ATmega32u4 microcontoller:* The microcontroller is connected to all the sensors and actuators. It has limited processing ressources but can react in real-time to events from the sensors. It is typically the right place to deploy the real-time critical part of the application, some real-time control algorithms, etc... It is not well suited to store data, perform non-realtime data processing, format data, etc...
 
-  The microcontroller is connected to all the sensors and actuators. It has limited processing ressources but can react in real-time to events from the sensors. It is typically the right place to deploy the real-time critical part of the application, some real-time control algorithms, etc... It is not well suited to store data, perform non-realtime data processing, format data, etc...
-
-* The AR9331 Processor
-
-  The AR9331 Processor is a gateway between the microcontroller and the external "Internet" part of the application. It has much more processing power than the microcontroller, some storage capabilities and connects to the Internet. The fact that it is on the same board is a great advantage because the application developper can assume a good reliability for the connection between the microcontroller and the AR9331 Processor. 
+* *The AR9331 Processor:* The AR9331 Processor is a gateway between the microcontroller and the external "Internet" part of the application. It has much more processing power than the microcontroller, some storage capabilities and connects to the Internet. The fact that it is on the same board is a great advantage because the application developper can assume a good reliability for the connection between the microcontroller and the AR9331 Processor. It is typically the right place to have some buffered storage of the application data, some translations betwenn low level protocols used by the sensors and actuators to more standardized serrvices which can be exposed over the IP network. Both the applications back-end and the clients can connects to services running on the AR9331 Processor. It is not the right place to have critical real-time processing which could be done on the microcontroller, long-term storage of the applications data or to serve large volume of historical data to clients. 
 
 * Servers and databases
 * The client
