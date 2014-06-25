@@ -1,0 +1,276 @@
+datatype Char	
+	@c_type "char"
+	@c_byte_size "1"
+	@java_type "Char";
+	
+datatype String	
+	@c_type "char *"
+	@c_byte_size "2"
+	@java_type "String";
+    
+datatype Boolean	
+	@c_type "uint8_t"
+	@c_byte_size "1"
+	@java_type "Boolean";
+
+datatype UInt8	
+	@c_type "uint8_t"
+	@c_byte_size "1"
+	@java_type "Byte";
+	
+datatype UInt16	
+	@c_type "uint16_t"
+	@c_byte_size "2"
+	@java_type "Integer";
+
+datatype Integer	
+	@c_type "int16_t"
+	@c_byte_size "2"
+	@java_type "Short";
+
+datatype Long	
+	@c_type "long"
+	@c_byte_size "4"
+	@java_type "Integer";
+
+datatype Double	
+	@c_type "double"
+	@c_byte_size "4"
+	@java_type "Float";
+	
+	
+thing fragment ThingMLSchedulerMsg {
+	message setup();
+	message poll();
+}
+
+thing ThingMLScheduler includes ThingMLSchedulerMsg 
+{
+	provided port Polling {
+		sends poll, setup
+	}
+}
+
+thing YunMessages {
+
+	message 4ms_interrupt();
+	message 100ms_interrupt();
+	message 1s_poll();
+	
+	message timeout(id : UInt8);
+	message timer_start(id: UInt8, time: Integer);
+	message timer_cancel(id : UInt8);
+}
+
+
+thing YunScheduler includes YunMessages, ThingMLSchedulerMsg 
+@c_header "
+#define NB_SOFT_TIMERS 4 // for 4 different timers, 0 to 3. change here to get more or less timers.
+"
+@c_global "
+struct YunScheduler_Instance *_YunScheduler_instance;
+uint8_t interrupt_counter = 0;
+"
+{
+
+	provided port yun
+	@sync_send "true" // Do not queue messages to make sure interrupts are executed right away.
+	{
+		sends 4ms_interrupt, 100ms_interrupt, 1s_poll
+		
+		receives timer_start, timer_cancel
+		sends timeout
+	}
+	
+	required port polling {
+		receives setup, poll
+	}
+	
+	property interrupt_counter : UInt8 = 0
+	
+	function initialize_timer3() do
+		'// Store the instance in a global variable so that the interrupt routine can use it
+		 _YunScheduler_instance = _instance;
+		 
+		 // Run timer3 interrupt up counting at 16MHz 
+		 TCCR3A = 0;
+		 TCCR3B = 0<<CS32 | 0<<CS31 | 1<<CS30;
+		
+		 //Timer3 Overflow Interrupt Enable
+		 TIMSK3 |= 1<<TOIE3;'
+	end
+	
+	
+	function timer3_compare_interrupt() 
+	@c_prototype "SIGNAL(TIMER3_OVF_vect)"
+	@c_instance_var_name "_YunScheduler_instance"
+	do
+		'TCNT3 = 1535;'
+		'interrupt_counter++;'
+		if ('interrupt_counter >= 24') do 
+			yun!100ms_interrupt()
+			'interrupt_counter=0;'
+		end
+		yun!4ms_interrupt()
+	end
+
+	statechart YunYunSchedulerStateChart init ACTIVE {
+
+		property timers : Long['NB_SOFT_TIMERS'] 
+
+		internal event polling?setup action do
+			initialize_timer3()
+		end
+		
+		internal event polling?poll action do
+			var t : UInt8 = 0
+			var tms : Long = 'millis()'
+			while (t < 'NB_SOFT_TIMERS') do
+				if (timers[t] > 0 and timers[t] > tms) do 
+					timers[t] = 0 
+					yun!timeout(t) 
+				end
+				t = t + 1
+			end
+		end
+		
+		internal event e : yun?timer_start action do
+			if(e.id < 'NB_SOFT_TIMERS') timers[e.id] = 'millis()' + e.time - 1 
+		end
+		
+		internal event e : yun?timer_cancel action do
+			if(e.id < 'NB_SOFT_TIMERS') timers[e.id] = 0
+		end
+
+		state ACTIVE {}
+
+	}
+}
+
+thing fragment YunApplication includes YunMessages, ThingMLSchedulerMsg {
+	required port yun 
+	@sync_send "true" // Do not queue messages to make sure timers are updated right away.
+	{
+		//receives setup, poll
+		receives 4ms_interrupt, 100ms_interrupt, 1s_poll
+		
+		sends timer_start, timer_cancel
+		receives timeout
+	}
+}
+
+thing Adafruit_RGBLCDShieldMsgs {
+
+	message button_press(but_id : UInt8);
+	message button_release(but_id : UInt8);
+	message button_long_press(but_id : UInt8);
+	
+	message set_bgcolor(color : UInt8);
+	message print_str(msg: String);
+	message print_dec(num: Double);
+    message print_num(num: Integer);
+	message clear();
+	message set_cursor(c : UInt8, l : UInt8);
+	
+}
+
+thing fragment Adafruit_RGBLCDShieldClient includes  Adafruit_RGBLCDShieldMsgs {
+
+	required port buttons 
+	{
+		receives button_press, button_release, button_long_press
+	}
+	
+	required port lcd 
+	@sync_send "true" // Do not queue thos message, send them directly to the LCD. We should not send them from interrupt routines. 
+	{
+		sends print_num, print_dec, print_str, clear, set_cursor, set_bgcolor
+	}
+	
+}
+
+thing Adafruit_RGBLCDShield includes YunMessages, Adafruit_RGBLCDShieldMsgs, ThingMLSchedulerMsg 
+@c_header"
+#include <Wire.h>
+#include <Adafruit_MCP23017.h>
+#include <Adafruit_RGBLCDShield.h>
+"
+@c_global "
+
+Adafruit_RGBLCDShield rgblcd = Adafruit_RGBLCDShield();
+
+"
+{
+
+	required port yun 
+	{
+		receives 4ms_interrupt
+	}
+
+	provided port buttons 
+	@sync_send "false" // The events are put in the message queue. This avoids processing events in the interrupt routine
+	{
+		sends button_press, button_release, button_long_press
+	}
+	
+	provided port lcd {
+		receives print_num, print_dec, print_str, clear, set_cursor, set_bgcolor
+	}
+
+	required port polling {
+		receives poll
+	}	
+
+	statechart RGBLCDShieldSM init ReadButtons {
+		
+		on entry do
+			'rgblcd.begin(16, 2);'
+			'rgblcd.setBacklight(0);'
+		end
+		
+		internal event e : lcd?print_str action 'rgblcd.print('&e.msg&');'
+		internal event e : lcd?print_num action 'rgblcd.print('&e.num&');'
+        internal event e : lcd?print_dec action 'rgblcd.print('&e.num&');'
+		internal event e : lcd?clear action 'rgblcd.clear();'
+		internal event e : lcd?set_cursor action 'rgblcd.setCursor('&e.c&', '&e.l&');'
+		internal event e : lcd?set_bgcolor action 'rgblcd.setBacklight('&e.color&');'
+		
+		state ReadButtons {
+		
+			property btime : UInt8[5]  // counters for the button status
+			property bstate : UInt8[5]  // counters for the button status
+			
+			internal event yun?4ms_interrupt action do
+				var button : UInt8 = 0
+				while (button < 5) do
+					if (bstate[button] > 0) btime[button] = btime[button] + 1
+					button = button + 1
+				end
+			end
+			
+			internal event polling?poll action do
+				var buttons : UInt8 = 'rgblcd.readButtons()'
+				var button : UInt8 = 0
+				while (button < 5) do
+					var pressed : Boolean = '(1 << '&button&') & '&buttons&''
+					if (pressed) do 
+						if (bstate[button] == 0) do buttons!button_press(button) btime[button]=0 end
+						bstate[button] = 1
+						//btime[button] =  btime[button] + 1 // Incremented with 4ms interrupt (250 -> 1 second)
+						if (btime[button] > 250) do buttons!button_long_press(button) btime[button]=0 end
+					end
+					if (not pressed) do
+						if (bstate[button] > 0) bstate[button] = bstate[button] + 1
+						if (bstate[button] > 6) do
+							buttons!button_release(button)
+							bstate[button] = 0
+						end
+				  	end
+				  	button = button + 1
+				end
+			end
+		
+		}
+	}
+
+}

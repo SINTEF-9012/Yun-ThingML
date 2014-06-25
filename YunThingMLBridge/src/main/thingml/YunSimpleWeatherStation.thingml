@@ -1,0 +1,183 @@
+import "lib/_RGBLCDShield.thingml"
+
+configuration YunSketchCfg {
+    
+    instance application: YunSketch	
+    instance yunScheduler:  YunScheduler
+	instance rgblcd : Adafruit_RGBLCDShield
+	connector application.yun => yunScheduler.yun
+	connector rgblcd.yun => yunScheduler.yun
+	connector application.buttons => rgblcd.buttons
+	connector application.lcd => rgblcd.lcd
+}
+
+thing YunSketch includes YunApplication, Adafruit_RGBLCDShieldClient
+@c_header "
+#define OFF 0x0
+#define RED 0x1
+#define YELLOW 0x3
+#define GREEN 0x2
+#define TEAL 0x6
+#define BLUE 0x4
+#define VIOLET 0x5
+#define WHITE 0x7
+
+#define SELECT 0x0
+#define RIGHT 0x1
+#define DOWN 0x2
+#define UP 0x3
+#define LEFT 0x4
+
+#include \"Barometer.h\"
+Barometer myBarometer;
+
+#include \"DHT.h\"
+#define DHTPIN A0 
+#define DHTTYPE DHT22   // DHT 22  (AM2302)
+DHT dht(DHTPIN, DHTTYPE);
+"
+{
+
+	property temperature1 : Double
+	property temperature2 : Double
+	property pressure : Double
+	property atm : Double
+	property altitude : Double
+	property humidity : Double
+	property light : Double
+	
+	function samplePressure() do
+		temperature1 = 'myBarometer.bmp085GetTemperature(myBarometer.bmp085ReadUT())'
+		pressure = 'myBarometer.bmp085GetPressure(myBarometer.bmp085ReadUP())'
+		//altitude = 'myBarometer.calcAltitude('&pressure&')' 
+		//atm = pressure / 101325 
+		yun!timer_start(3, 1000) // pressure
+	end
+	
+	function sampleLight() do
+		light = 'analogRead(A1) / 10.24f'
+		yun!timer_start(1, 250) // light
+	end
+	
+    property read_humidity : Boolean = 1
+	function sampleHumidity() do
+        // This is a very slow sensor so we do no whant to read it too often
+		if (read_humidity) humidity = 'dht.readHumidity()'
+		if (not read_humidity) temperature2 = 'dht.readTemperature()'
+        read_humidity = 1-read_humidity
+		yun!timer_start(2, 1000) // humidity
+	end
+	
+	
+	function updateHumidityDisplay() do
+		lcd!set_cursor(2,0)
+		lcd!print_dec(temperature2)
+		lcd!set_cursor(2,1)
+		lcd!print_dec(humidity)
+	end
+	
+	function updatePressureDisplay() do
+		lcd!set_cursor(2,0)
+		lcd!print_dec(temperature1)
+		lcd!set_cursor(2,1)
+		lcd!print_dec(pressure)
+	end
+	
+	function updateLightDisplay() do
+		lcd!set_cursor(2,0)
+		lcd!print_dec(light)
+	end
+
+	function transmitData() do
+		yun!serial_print_str("T1:") yun!serial_print_dec(temperature1) yun!serial_print_str("; ")
+		yun!serial_print_str("P:") yun!serial_print_dec(pressure) yun!serial_print_str("; ")
+		yun!serial_print_str("T2:") yun!serial_print_dec(temperature2) yun!serial_print_str("; ")
+		yun!serial_print_str("H:") yun!serial_print_dec(humidity) yun!serial_print_str("; ")
+		yun!serial_print_str("L:") yun!serial_print_dec(light) yun!serial_print_str(";\n")
+	end
+	
+	
+	statechart YunSketchStateChart init SPLASH {
+
+		state SPLASH {
+			on entry do
+                // Initialize the display
+                lcd!clear()
+                lcd!print_str("HEADS / ThingML")
+                lcd!set_bgcolor('RED')
+                lcd!set_cursor(0,1)
+                lcd!print_str("Weather Station")
+                // Initialize the sensors
+                'dht.begin();'
+                lcd!set_bgcolor('YELLOW')
+    			'myBarometer.init();'
+    			// Leave the splash screen on for a while
+                yun!timer_start(0, 1500)
+                lcd!set_bgcolor('GREEN')
+            end
+            transition -> ON event e : yun?timeout guard e.id == 0 action lcd!set_bgcolor('WHITE')
+		}
+		
+		composite state ON init ShowHumidity {
+		
+			on entry do
+				// Start sampling sensors with 3 different sampling rates
+				sampleLight()
+				sampleHumidity()
+				samplePressure()
+			end
+			
+			internal event e : yun?timeout guard e.id == 1 action sampleLight()
+			internal event e : yun?timeout guard e.id == 2 action sampleHumidity()
+			internal event e : yun?timeout guard e.id == 3 action do samplePressure() transmitData() end
+			
+			state ShowHumidity {
+				on entry do
+					 lcd!clear()
+					 lcd!set_bgcolor('TEAL')
+                     lcd!print_str("T:")
+                     lcd!set_cursor(0,1)
+                     lcd!print_str("H:")
+                     updateHumidityDisplay()
+                     yun!timer_start(0, 250)
+				end
+				internal event e : yun?timeout guard e.id == 0 action do
+					updateHumidityDisplay()
+					yun!timer_start(0, 250)
+				end
+				transition -> ShowPressure event e : buttons?button_press guard e.but_id == 'SELECT'
+			}
+			state ShowPressure {
+				on entry do
+					 lcd!clear()
+					 lcd!set_bgcolor('YELLOW') 
+                     lcd!print_str("T:")
+                     lcd!set_cursor(0,1)
+                     lcd!print_str("P:")
+                     updatePressureDisplay()
+                     yun!timer_start(0, 500)
+				end
+				internal event e : yun?timeout guard e.id == 0 action do
+					updatePressureDisplay()
+					yun!timer_start(0, 500)
+				end
+				transition -> ShowLight event e : buttons?button_press guard e.but_id == 'SELECT'
+			
+			}
+			state ShowLight {
+				on entry do
+					 lcd!clear()
+					 lcd!set_bgcolor('VIOLET')
+                     lcd!print_str("L:")
+                     updateLightDisplay()
+                     yun!timer_start(0, 100)
+				end
+				internal event e : yun?timeout guard e.id == 0 action do
+					updateLightDisplay()
+					yun!timer_start(0, 100)
+				end
+				transition -> ShowHumidity event e : buttons?button_press guard e.but_id == 'SELECT'
+			}
+		}
+	}
+}

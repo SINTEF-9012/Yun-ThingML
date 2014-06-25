@@ -1,0 +1,89 @@
+import "lib/_RGBLCDShield.thingml"
+
+configuration YunSketchCfg {
+    
+    instance application: YunSketch	
+    instance yunScheduler:  YunScheduler
+	instance rgblcd : Adafruit_RGBLCDShield
+	//connector application.yun => yunScheduler.yun
+	connector rgblcd.yun => yunScheduler.yun
+	connector application.buttons => rgblcd.buttons
+	connector application.lcd => rgblcd.lcd
+}
+
+thing YunSketch includes YunApplication, Adafruit_RGBLCDShieldClient
+@c_header "
+#define OFF 0x0
+#define RED 0x1
+#define YELLOW 0x3
+#define GREEN 0x2
+#define TEAL 0x6
+#define BLUE 0x4
+#define VIOLET 0x5
+#define WHITE 0x7
+
+#define SELECT 0x0
+#define RIGHT 0x1
+#define DOWN 0x2
+#define UP 0x3
+#define LEFT 0x4
+"
+{
+	
+	statechart YunSketchStateChart init OFF {
+
+
+		state OFF {
+		
+            on entry do
+                lcd!clear()
+                lcd!print_str("*ThingML Events*")
+                lcd!set_bgcolor('OFF')
+                lcd!set_cursor(0,1)
+            	lcd!print_str("ON: Hold Select")
+            end
+
+        	transition -> ON event e : buttons?button_long_press guard e.but_id == 'SELECT' 
+		}
+
+		state ON {
+    
+            property color : UInt8 = 'TEAL'
+    
+            on entry do
+                lcd!set_bgcolor(color)
+                lcd!clear()
+                lcd!print_str("OFF: Hold Select")
+            end
+    
+            transition -> OFF event e : buttons?button_long_press guard e.but_id == 'SELECT' 
+    
+            internal event e : buttons?button_long_press guard not (e.but_id == 'SELECT')  action do
+                lcd!set_cursor(0,1)
+            	lcd!print_str("BUT:")
+                lcd!print_num(e.but_id)
+                lcd!print_str(" <L PRESS> ")
+            end   
+    
+            internal event e : buttons?button_press action do
+                lcd!set_cursor(0,1)
+            	lcd!print_str("BUT:")
+                lcd!print_num(e.but_id)
+                lcd!print_str("  <PRESS>  ")
+                if(e.but_id == 'RIGHT') do
+                    color = color + 1
+                    if (color > 7) color = 1
+                    lcd!set_bgcolor(color)
+                end
+            end   
+            
+            internal event e : buttons?button_release action do
+                lcd!set_cursor(0,1)
+            	lcd!print_str("BUT:")
+                lcd!print_num(e.but_id)
+                lcd!print_str(" <RELEASE> ")
+            end   
+
+		}
+	}
+}

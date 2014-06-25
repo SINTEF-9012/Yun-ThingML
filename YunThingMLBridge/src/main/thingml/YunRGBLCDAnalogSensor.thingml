@@ -1,0 +1,265 @@
+import "lib/_RGBLCDShield.thingml"
+
+configuration YunSketchCfg {
+    
+    instance application: YunSketch	
+    instance yunScheduler:  YunScheduler
+	instance rgblcd : Adafruit_RGBLCDShield
+	connector application.yun => yunScheduler.yun
+	connector rgblcd.yun => yunScheduler.yun
+	connector application.buttons => rgblcd.buttons
+	connector application.lcd => rgblcd.lcd
+}
+
+thing YunSketch includes YunApplication, Adafruit_RGBLCDShieldClient
+@c_header "
+#define OFF 0x0
+#define RED 0x1
+#define YELLOW 0x3
+#define GREEN 0x2
+#define TEAL 0x6
+#define BLUE 0x4
+#define VIOLET 0x5
+#define WHITE 0x7
+
+#define SELECT 0x0
+#define RIGHT 0x1
+#define DOWN 0x2
+#define UP 0x3
+#define LEFT 0x4
+"
+{
+
+
+	property txchannels : Integer = 0
+	property sampling_rate : Integer = 250
+	property usb_rate : Integer = 1000
+	property serial_rate : Integer = 1000
+	
+	function update_txchannels() do
+		lcd!set_cursor(0,1)
+		if (txchannels > 3) txchannels = 0
+		if (txchannels < 0) txchannels = 3
+		if (txchannels == 0) lcd!print_str("NONE   ")
+		if (txchannels == 1) lcd!print_str("USB    ")
+		if (txchannels == 2) lcd!print_str("LININO ")
+		if (txchannels == 3) lcd!print_str("BOTH   ")
+	end
+	
+	function update_sampling_rate() do
+		lcd!set_cursor(0,1)
+		if (sampling_rate > 5000) sampling_rate = 5000
+		if (sampling_rate < 100) sampling_rate = 50
+		lcd!print_num(sampling_rate)
+		lcd!print_str(" ms    ")
+	end
+	
+	function update_usb_rate() do
+		lcd!set_cursor(0,1)
+		if (usb_rate > 10000) usb_rate = 10000
+		if (usb_rate < 100) usb_rate = 100
+		lcd!print_num(usb_rate)
+		lcd!print_str(" ms    ")
+	end
+	
+	function update_serial_rate() do
+		lcd!set_cursor(0,1)
+		if (serial_rate > 10000) serial_rate = 10000
+		if (serial_rate < 100) serial_rate = 100
+		lcd!print_num(serial_rate)
+		lcd!print_str(" ms    ")
+	end
+	
+	statechart YunSketchStateChart init SPLASH {
+
+		state SPLASH {
+			 
+			 on entry do
+			 	yun!timer_start(0, 1000)
+			 	lcd!clear()
+             	lcd!print_str(" Analog Sensor! ")
+             	lcd!set_bgcolor('TEAL')
+             end
+             
+             transition -> OFF event e : yun?timeout guard e.id == 0
+		
+		}
+
+		state OFF {
+		
+            on entry do
+                lcd!set_bgcolor('RED')
+                lcd!clear()
+             	lcd!print_str(" Analog Sensor! ")
+                lcd!set_cursor(0,1)
+            	lcd!print_str("ON: Hold Select")
+            end
+
+        	transition -> ON event e : buttons?button_long_press guard e.but_id == 'SELECT' 
+		}
+
+		composite state ON init RUNNING {
+    
+           
+            property a1 : Integer = 0
+    
+            transition -> OFF event e : buttons?button_long_press guard e.but_id == 'SELECT' 
+            
+    
+    		state RUNNING {
+    		
+    			on entry do
+                	lcd!set_bgcolor('GREEN')
+                	lcd!clear()
+                	lcd!print_str("A1: ????  [")
+                	lcd!print_num(sampling_rate)
+                	lcd!print_str("]")
+                	yun!timer_start(1, 250) // sampling
+                	lcd!set_cursor(0,1)
+                	if (txchannels == 1 or txchannels == 3) do 
+                		yun!timer_start(2, 500) // usb tx
+                		lcd!print_str("U[")
+                		lcd!print_num(usb_rate)
+                		lcd!print_str("] ")
+                	end
+                	if (txchannels == 2 or txchannels == 3) do 
+                		yun!timer_start(3, 500) // linuino tx
+                		lcd!print_str("L[")
+                		lcd!print_num(serial_rate)
+                		lcd!print_str("] ")
+                	end
+                	if (txchannels == 0) do
+                		lcd!print_str("*NO DATA OUTPUT*")
+                	end
+            	end
+            	
+            	on exit do
+            		yun!timer_cancel(1) // sampling
+            		yun!timer_cancel(2) // usb tx
+            		yun!timer_cancel(3) // linuino tx
+            	end
+            	
+            	internal event e : yun?timeout guard e.id == 1 // sampling
+            	action do
+            		yun!timer_start(1, sampling_rate) // sampling
+            		a1 = 'analogRead(A1)'
+            		lcd!set_cursor(0,0)
+            		lcd!print_str("A1: ")
+            		lcd!print_str("    ")
+            		lcd!set_cursor(4,0)
+            		lcd!print_num(a1)
+            	end
+            	
+            	internal event e : yun?timeout guard e.id == 2 // usb tx
+            	action do
+            		yun!timer_start(2, usb_rate) 
+            		yun!usb_print_str("A1:")
+            		yun!usb_print_num(a1)
+            		yun!usb_print_str("\n")
+            	end
+            	
+            	internal event e : yun?timeout guard e.id == 3 // linuino tx
+            	action do
+            		yun!timer_start(3, serial_rate) 
+            		yun!serial_print_str("A1:")
+            		yun!serial_print_num(a1)
+            		yun!serial_print_str("\n")
+            	end
+    		
+	    		transition -> ADJUST event e : buttons?button_press guard e.but_id == 'RIGHT'
+	    		
+    		}
+    		
+    		composite state ADJUST init SAMPLING {
+    			
+    			on entry lcd!set_bgcolor('YELLOW')
+    			
+    			transition -> RUNNING event e : buttons?button_press guard e.but_id == 'SELECT'
+    			
+    			state SAMPLING {
+    			
+    				on entry do
+    					lcd!clear()
+    					lcd!print_str("Sampling Rate:")
+    					update_sampling_rate()
+    				end
+    			
+    				 transition -> OUTPUTS event e : buttons?button_press guard e.but_id == 'RIGHT'
+    				 transition -> SERIAL_RATE event e : buttons?button_press guard e.but_id == 'LEFT'
+    				 
+    				 internal event e : buttons?button_press guard e.but_id == 'UP' 
+    				 action do sampling_rate = sampling_rate + 50 update_sampling_rate() end
+    				 internal event e : buttons?button_long_press guard e.but_id == 'UP' 
+    				 action do sampling_rate = sampling_rate + 500 update_sampling_rate() end
+    				 internal event e : buttons?button_press guard e.but_id == 'DOWN' 
+    				 action do sampling_rate = sampling_rate - 50 update_sampling_rate() end
+    				 internal event e : buttons?button_long_press guard e.but_id == 'DOWN' 
+    				 action do sampling_rate = sampling_rate - 500 update_sampling_rate() end
+    				 
+    			}
+    			
+    			state OUTPUTS {
+    				
+    				on entry do
+    					lcd!clear()
+    					lcd!print_str("Data Output:")
+    					update_txchannels()
+    				end
+    			
+    				transition -> USB_RATE event e : buttons?button_press guard e.but_id == 'RIGHT'
+    				transition -> SAMPLING event e : buttons?button_press guard e.but_id == 'LEFT'
+    				
+    				internal event e : buttons?button_press guard e.but_id == 'UP' 
+    				action do txchannels = txchannels + 1 update_txchannels() end
+    				internal event e : buttons?button_press guard e.but_id == 'DOWN' 
+    				action do txchannels = txchannels - 1 update_txchannels() end
+
+    			}
+    			
+    			state USB_RATE {
+    				
+    				on entry do
+    					lcd!clear()
+    					lcd!print_str("USB TX Rate:")
+    					update_usb_rate()
+    				end
+    			
+    				transition -> SERIAL_RATE event e : buttons?button_press guard e.but_id == 'RIGHT'
+    				transition -> OUTPUTS event e : buttons?button_press guard e.but_id == 'LEFT'
+    				
+    				internal event e : buttons?button_press guard e.but_id == 'UP' 
+    				action do usb_rate = usb_rate + 50 update_usb_rate() end
+    				internal event e : buttons?button_long_press guard e.but_id == 'UP' 
+    				action do usb_rate = usb_rate + 500 update_usb_rate() end
+    				internal event e : buttons?button_press guard e.but_id == 'DOWN' 
+    				action do usb_rate = usb_rate - 50 update_usb_rate() end
+    				internal event e : buttons?button_long_press guard e.but_id == 'DOWN' 
+    				action do usb_rate = usb_rate - 500 update_usb_rate() end
+    			}
+    			
+    			state SERIAL_RATE {
+    			
+    				on entry do
+    					lcd!clear()
+    					lcd!print_str("LININO TX Rate:")
+    					update_serial_rate()
+    				end
+    			
+    				transition -> SAMPLING event e : buttons?button_press guard e.but_id == 'RIGHT'
+    				transition -> USB_RATE event e : buttons?button_press guard e.but_id == 'LEFT'
+    				
+    				internal event e : buttons?button_press guard e.but_id == 'UP' 
+    				action do serial_rate = serial_rate + 50 update_serial_rate() end
+    				internal event e : buttons?button_long_press guard e.but_id == 'UP' 
+    				action do serial_rate = serial_rate + 500 update_serial_rate() end
+    				internal event e : buttons?button_press guard e.but_id == 'DOWN' 
+    				action do serial_rate = serial_rate - 50 update_serial_rate() end
+    				internal event e : buttons?button_long_press guard e.but_id == 'DOWN' 
+    				action do serial_rate = serial_rate - 500 update_serial_rate() end
+    			}
+    		
+    		} // End of ADJUST  
+
+		}
+	}
+}

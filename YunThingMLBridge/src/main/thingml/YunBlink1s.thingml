@@ -1,0 +1,37 @@
+import "lib/_Yun.thingml"
+
+configuration YunSketchCfg {
+	instance yunScheduler:  YunScheduler
+	instance application: YunSketch
+	connector application.yun => yunScheduler.yun
+}
+
+thing YunSketch includes YunApplication
+  @debug "false"
+  @debug_fifo "true"
+  @debug_message_send ".*"
+  @debug_message_receive ".*"
+{
+	
+	readonly property LED : UInt8 = 8
+	
+	function setOutput(pin : UInt8) 'pinMode('&pin&', OUTPUT);'
+	function setInput(pin : UInt8) 'pinMode('&pin&', INPUT);'
+	
+	function setDigitalHigh(pin : UInt8) 'digitalWrite('&pin&', HIGH);'
+	function setDigitalLow(pin : UInt8) 'digitalWrite('&pin&', LOW);'
+
+	statechart YunTimerStateChart init OFF {
+
+		on entry setOutput(LED)
+
+		state OFF {
+			on entry setDigitalHigh(LED)
+			transition -> ON event yun?1s_poll
+		}
+		state ON {
+			on entry setDigitalLow(LED)
+			transition -> OFF event yun?1s_poll
+		}
+	}
+}

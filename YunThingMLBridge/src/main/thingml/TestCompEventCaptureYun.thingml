@@ -1,0 +1,77 @@
+import "lib/_Yun.thingml"
+
+configuration YunSketchCfg {
+	instance yunScheduler:  YunScheduler
+	instance application: YunSketch
+	connector application.yun => yunScheduler.yun
+}
+
+thing YunSketch includes YunApplication
+  @debug "false"
+  @debug_fifo "true"
+  @debug_message_send ".*"
+  @debug_message_receive ".*"
+{
+	
+
+	statechart TestCompEventCapture init s1{
+	composite state s1 init s2 {
+		on entry yun!usb_print_str("1")
+
+		transition -> s5
+		event m : yun?usb_rx_char
+		guard m.c == '\'0\''
+		action yun!usb_print_str("a")
+
+		state s2 {
+			on entry yun!usb_print_str("2")
+
+			transition -> s3
+			event m : yun?usb_rx_char
+			guard m.c == '\'0\''
+			action yun!usb_print_str("b")
+		}
+
+		state s3 {
+			on entry yun!usb_print_str("3")
+
+			transition -> s4
+			event m : yun?usb_rx_char
+			guard m.c == '\'0\''
+			action yun!usb_print_str("c")
+		}
+
+		state s4 {
+			on entry yun!usb_print_str("4")
+		}
+
+    region R2 init Test {
+        state Test {
+            internal event m : yun?usb_rx_char
+			guard m.c == '\'0\''
+			action yun!usb_print_str("R")
+        }    
+    }
+
+	}//end of composite
+
+	state s5 {
+		on entry yun!usb_print_str("5")
+
+		transition -> s1
+		event m : yun?usb_rx_char
+		guard m.c == '\'0\''
+		action yun!usb_print_str("e")
+	}
+
+    region R3 init Test {
+        state Test {
+            internal event m : yun?usb_rx_char
+			guard m.c == '\'0\''
+			action yun!usb_print_str("*")
+        }    
+    }
+
+}//end of statechart
+	
+}

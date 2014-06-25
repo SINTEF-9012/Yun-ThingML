@@ -1,0 +1,169 @@
+import "_Datatypes.thingml"
+	
+thing YunMessages {
+
+	message 4ms_interrupt();
+	message 100ms_interrupt();
+	message 1s_poll();
+	
+	message timeout(id : UInt8);
+	message timer_start(id: UInt8, time: Integer);
+	message timer_cancel(id : UInt8);
+	
+	message serial_print_str(msg: String);
+	message serial_print_dec(num: Double);
+    message serial_print_num(num: Integer);
+    
+    message usb_print_str(msg: String);
+	message usb_print_dec(num: Double);
+    message usb_print_num(num: Integer);
+    
+    message serial_rx_char(c : Char);
+    message usb_rx_char(c : Char);
+}
+
+
+thing YunScheduler includes YunMessages, ThingMLSchedulerMsg 
+@c_header "
+#define NB_SOFT_TIMERS 4 // for 4 different timers, 0 to 3. change here to get more or less timers.
+"
+@c_global "
+struct YunScheduler_Instance *_YunScheduler_instance;
+uint8_t interrupt_counter = 0;
+"
+{
+
+	provided port yun
+	@sync_send "true" // Do not queue messages to make sure interrupts are executed right away.
+	{
+		sends 4ms_interrupt, 100ms_interrupt, 1s_poll
+		
+		receives timer_start, timer_cancel
+		sends timeout
+		
+		receives serial_print_str, serial_print_dec, serial_print_num
+		sends serial_rx_char
+		
+		receives usb_print_str, usb_print_dec, usb_print_num
+		sends usb_rx_char
+	}
+	
+	required port polling {
+		receives setup, poll
+	}
+	
+	property interrupt_counter : UInt8 = 0
+	
+	function initialize_timer3() do
+		'// Store the instance in a global variable so that the interrupt routine can use it
+		 _YunScheduler_instance = _instance;
+		 
+		 // Run timer3 interrupt up counting at 16MHz 
+		 TCCR3A = 0;
+		 TCCR3B = 0<<CS32 | 0<<CS31 | 1<<CS30;
+		
+		 //Timer3 Overflow Interrupt Enable
+		 TIMSK3 |= 1<<TOIE3;'
+	end
+	
+	
+	function timer3_compare_interrupt() 
+	@c_prototype "SIGNAL(TIMER3_OVF_vect)"
+	@c_instance_var_name "_YunScheduler_instance"
+	do
+		'TCNT3 = 1535;'
+		'interrupt_counter++;'
+		if ('interrupt_counter >= 24') do 
+			yun!100ms_interrupt()
+			'interrupt_counter=0;'
+		end
+		yun!4ms_interrupt()
+	end
+
+	statechart YunYunSchedulerStateChart init ACTIVE {
+
+		property timers : Long['NB_SOFT_TIMERS'] 
+		property prev_1sec : Long
+
+		internal event polling?setup action do
+			'Serial1.begin(115200);'
+			'Serial.begin(115200);'
+			initialize_timer3()
+			prev_1sec = 'millis()' + 1000
+		end
+		
+		internal event polling?poll action do
+			var tms : Long = 'millis()'
+			// Handle timers
+			var t : UInt8 = 0
+			while (t < 'NB_SOFT_TIMERS') do
+				if (timers[t] > 0 and timers[t] < tms) do 
+					timers[t] = 0 
+					yun!timeout(t) 
+				end
+				t = t + 1
+			end
+			// Handle the 1s poll
+			if (prev_1sec < tms) do
+				prev_1sec = prev_1sec + 1000
+				yun!1s_poll()
+			end
+			// Handle serial rx
+			if ('Serial1.available()' > 0) yun!serial_rx_char('(char)Serial1.read()')
+			if ('Serial.available()' > 0) yun!usb_rx_char('(char)Serial.read()')
+		end
+		
+		internal event e : yun?timer_start action do
+			if(e.id < 'NB_SOFT_TIMERS') timers[e.id] = 'millis()' + e.time - 1 
+		end
+		
+		internal event e : yun?timer_cancel action do
+			if(e.id < 'NB_SOFT_TIMERS') timers[e.id] = 0
+		end
+
+		internal event e : yun?serial_print_str action do
+			'Serial1.print('&e.msg&');'
+		end
+		
+		internal event e : yun?serial_print_dec action do
+			'Serial1.print('&e.num&');'
+		end
+		
+		internal event e : yun?serial_print_num action do
+			'Serial1.print('&e.num&');'
+		end
+		
+		internal event e : yun?usb_print_str action do
+			'Serial.print('&e.msg&');'
+		end
+		
+		internal event e : yun?usb_print_dec action do
+			'Serial.print('&e.num&');'
+		end
+		
+		internal event e : yun?usb_print_num action do
+			'Serial.print('&e.num&');'
+		end
+		
+		state ACTIVE {}
+
+	}
+}
+
+thing fragment YunApplication includes YunMessages, ThingMLSchedulerMsg {
+	required port yun 
+	@sync_send "true" // Do not queue messages to make sure timers are updated right away.
+	{
+		//receives setup, poll
+		receives 4ms_interrupt, 100ms_interrupt, 1s_poll
+		
+		sends timer_start, timer_cancel
+		receives timeout
+		
+		sends serial_print_str, serial_print_dec, serial_print_num
+		receives serial_rx_char
+		
+		sends usb_print_str, usb_print_dec, usb_print_num
+		receives usb_rx_char
+	}
+}

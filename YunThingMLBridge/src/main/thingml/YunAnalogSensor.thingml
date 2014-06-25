@@ -1,0 +1,82 @@
+import "lib/_Yun.thingml"
+
+configuration YunSketchCfg {
+	instance yunScheduler:  YunScheduler
+	instance application: YunSketch
+	connector application.yun => yunScheduler.yun
+}
+
+thing YunSketch includes YunApplication
+{
+	
+	readonly property LED : UInt8 = 13
+	readonly property ANALOGIN : UInt8 = 'A1'
+	
+	function setOutput(pin : UInt8) 'pinMode('&pin&', OUTPUT);'
+	function setInput(pin : UInt8) 'pinMode('&pin&', INPUT);'
+	
+	function setDigitalHigh(pin : UInt8) 'digitalWrite('&pin&', HIGH);'
+	function setDigitalLow(pin : UInt8) 'digitalWrite('&pin&', LOW);'
+	
+	function analogRead(pin : UInt8) : Integer return 'analogRead('&pin&')'
+
+	statechart YunSketchStateChart init IDLE {
+
+		property voltage : Double
+
+		on entry setOutput(LED)
+			
+		// Update voltage every 1s
+		internal event yun?1s_poll action do
+			setDigitalHigh(LED)
+			voltage = analogRead(ANALOGIN) * '(5.0 / 1023.0)'
+			yun!timer_start(0, 100)
+		end
+		
+		internal event e : yun?timeout guard e.id == 0 action setDigitalLow(LED)
+		
+		state IDLE {
+
+			on entry yun!usb_print_str("# Sensor IDLE. Send 's' to start forwarring data\n")
+
+			transition -> SENDING_DATA event e : yun?usb_rx_char guard e.c == '\'s\'' action do
+				yun!usb_print_str("# Stating to forward data. Send 's' to stop\n")
+			end
+
+		}
+		
+		state SENDING_DATA {
+		
+			property rate : UInt8 = 5 // Every 5 sec
+			
+			on entry yun!timer_start(1, rate * 1000)
+			
+			transition -> SENDING_DATA event e : yun?timeout guard e.id == 1 action do 
+				yun!usb_print_str("Voltage : ")
+				yun!usb_print_dec(voltage)
+				yun!usb_print_str("\n")
+			end
+			
+			transition -> IDLE event e : yun?usb_rx_char guard e.c == '\'s\''
+			
+            transition -> SENDING_DATA event e : yun?usb_rx_char guard e.c == '\'-\'' action do 
+				yun!timer_cancel(1)
+				rate = rate + 1 
+				if (rate > 30) rate = 30 
+				yun!usb_print_str("# Data increased to ")
+				yun!usb_print_num(rate)
+				yun!usb_print_str("\n")
+			end
+
+			transition -> SENDING_DATA event e : yun?usb_rx_char guard e.c == '\'+\'' action do 
+				yun!timer_cancel(1)
+				rate = rate - 1 
+				if (rate < 1) rate = 1
+				yun!usb_print_str("# Data decreased to ")
+				yun!usb_print_num(rate)
+				yun!usb_print_str("\n")
+			end
+			
+		}
+	}
+}

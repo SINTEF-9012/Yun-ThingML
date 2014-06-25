@@ -1,0 +1,38 @@
+import "lib/_Yun.thingml"
+
+configuration YunSketchCfg {
+	instance yunScheduler:  YunScheduler
+	instance application: YunSketch
+	connector application.yun => yunScheduler.yun
+}
+
+thing YunSketch includes YunApplication
+@c_header "
+#define LED  13
+"
+{
+	statechart YunTimerStateChart init INIT {
+		
+		state INIT {
+		
+			on entry 'pinMode(LED, OUTPUT);'
+			transition -> ON
+		
+		}
+
+		state ON {
+			on entry 'digitalWrite(LED, HIGH);'
+			transition -> OFF event yun?1s_poll
+		}
+		
+		state OFF {
+			on entry 'digitalWrite(LED, LOW);'
+			transition -> USELESS event yun?1s_poll
+		}
+		
+		state USELESS {
+			transition -> ON // just to test auto-transitions
+		}
+		
+	}
+}

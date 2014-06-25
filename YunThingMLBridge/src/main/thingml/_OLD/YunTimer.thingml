@@ -1,0 +1,180 @@
+datatype Char	
+	@c_type "char"
+	@c_byte_size "1"
+	@java_type "Char";
+    
+datatype Boolean	
+	@c_type "uint8_t"
+	@c_byte_size "1"
+	@java_type "Boolean";
+
+datatype UInt8	
+	@c_type "uint8_t"
+	@c_byte_size "1"
+	@java_type "Byte";
+	
+datatype UInt16	
+	@c_type "uint16_t"
+	@c_byte_size "2"
+	@java_type "Integer";
+
+datatype Integer	
+	@c_type "int16_t"
+	@c_byte_size "2"
+	@java_type "Short";
+
+datatype Long	
+	@c_type "long"
+	@c_byte_size "4"
+	@java_type "Integer";
+
+datatype Double	
+	@c_type "double"
+	@c_byte_size "4"
+	@java_type "Float";
+	
+	
+thing fragment ThingMLSchedulerMsg {
+	message setup();
+	message poll();
+}
+
+thing ThingMLScheduler includes ThingMLSchedulerMsg 
+{
+	provided port Polling {
+		sends poll, setup
+	}
+}
+
+thing YunMessages {
+
+	message 1ms_interrupt();
+	message 100ms_interrupt();
+	message 1s_poll();
+	
+	message timeout(id : UInt8);
+	message timer_start(id: UInt8, time: Integer);
+	message timer_cancel(id : UInt8);
+}
+
+
+thing YunScheduler includes YunMessages, ThingMLSchedulerMsg 
+@c_global "
+struct YunScheduler_Instance *_YunScheduler_instance;
+uint8_t interrupt_counter = 0;
+"
+{
+
+	provided port yun {
+		sends 1ms_interrupt, 100ms_interrupt, 1s_poll
+		
+		receives timer_start, timer_cancel
+		sends timeout
+	}
+	
+	required port polling {
+		receives setup, poll
+	}
+	
+	property interrupt_counter : UInt8 = 0
+	
+	function initialize_timer3() do
+		'// Store the instance in a global variable so that the interrupt routine can use it
+		 _YunScheduler_instance = _instance;
+		 
+		 // Run timer3 interrupt up counting at 16MHz 
+		 TCCR3A = 0;
+		 TCCR3B = 0<<CS32 | 0<<CS31 | 1<<CS30;
+		
+		 //Timer3 Overflow Interrupt Enable
+		 TIMSK3 |= 1<<TOIE3;'
+	end
+	
+	
+	function timer3_compare_interrupt() 
+	@c_prototype "SIGNAL(TIMER3_OVF_vect)"
+	@c_instance_var_name "_YunScheduler_instance"
+	do
+		'interrupt_counter++;'
+		if ('interrupt_counter >= 100') do 
+			yun!100ms_interrupt()
+			'interrupt_counter=0;'
+		end
+		yun!1ms_interrupt()
+	end
+
+	statechart YunYunSchedulerStateChart init ACTIVE {
+
+		internal event polling?setup action do
+			//yun!setup()
+			initialize_timer3()
+		end
+		
+		internal event polling?poll action do
+			//yun!poll()
+		end
+
+		state ACTIVE {}
+
+	}
+}
+
+thing fragment YunApplication includes YunMessages, ThingMLSchedulerMsg {
+	required port yun {
+		receives setup, poll
+		receives 1ms_interrupt, 100ms_interrupt, 1s_poll
+		
+		sends timer_start, timer_cancel
+		receives timeout
+	}
+}
+
+configuration YunTimerCfg {
+	instance yunScheduler:  YunScheduler
+	instance application: YunSketch
+	connector application.yun => yunScheduler.yun
+}
+
+thing YunSketch includes YunApplication
+@c_header "
+
+#define POT  A1
+#define LED  12
+#define BUZ  11
+
+"
+{
+	
+	function init_pins() do
+		'pinMode(LED, OUTPUT);'
+		'pinMode(BUZ, OUTPUT);'
+	end
+	
+	function led_on() 'digitalWrite(LED, HIGH);'
+	function led_off() 'digitalWrite(LED, LOW);'
+	
+	function buz_on() 'digitalWrite(BUZ, HIGH);'
+	function buz_off() 'digitalWrite(BUZ, LOW);'
+
+	statechart YunTimerStateChart init OFF {
+
+		internal event yun?poll action do
+			
+		end
+
+		internal event yun?setup action do
+			 init_pins()
+		end
+
+		state OFF {
+			on entry led_off()
+			transition -> ON event yun?100ms_interrupt
+		}
+		state ON {
+			on entry led_on()
+			transition -> OFF event yun?100ms_interrupt
+		}
+
+	}
+
+}
