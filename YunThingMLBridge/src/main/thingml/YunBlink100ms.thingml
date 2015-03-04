@@ -9,7 +9,7 @@ configuration YunSketchCfg {
 thing YunSketch includes YunApplication
 {
 	
-	readonly property LED : UInt8 = 13
+	readonly property LED : UInt8 = 8
 	
 	function setOutput(pin : UInt8) 'pinMode('&pin&', OUTPUT);'
 	function setInput(pin : UInt8) 'pinMode('&pin&', INPUT);'
